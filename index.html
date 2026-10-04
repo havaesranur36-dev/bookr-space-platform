@@ -2028,10 +2028,10 @@ async function cloudPull(){
   return {list,wk,avs};
 }
 async function cloudTeacherStart(){
-  console.log('BOOKR build: 2026-10-04-a');           // canlıda sürüm doğrulaması
-  if(!cloud.on){cloudUI('off','Bulut kapalı');return;}
+  console.log('BOOKR build: 2026-10-04-a');
+  if(!cloud.on){cloudUI('off','Bulut kapalı: Firebase bilgileri girilmemiş (yalnızca bu tarayıcıda çalışır)');return;}
   cloudUI('busy','Bulut hazırlanıyor…');
-  if(!(await cloudInit())){cloudUI('err','Firebase yüklenemedi');return;}
+  if(!(await cloudInit())){cloudUI('err','Firebase yüklenemedi (internet / yapılandırma)');return;}
   cloud.AU.onAuthStateChanged(cloud.auth, async u=>{
     cloud.user=u&&!u.isAnonymous?u:null;
     if(!cloud.user){
@@ -2045,7 +2045,7 @@ async function cloudTeacherStart(){
       const {list,wk,avs}=await cloudPull();
       console.log('Buluttan gelen öğrenci sayısı:',list.length);
       if(list.length){
-        await saveSnapshot();                          // ezmeden önce yerel yedek
+        await saveSnapshot();
         S.students=list;
         if(wk){S.weekNo=wk.no||S.weekNo;S.weekStart=wk.start||S.weekStart;S.weekBooks=wk.books||[];}
         avs.forEach((src,id)=>{if(!S.avatars.some(a=>a.id===id))S.avatars.push({id,src});});
@@ -2054,44 +2054,16 @@ async function cloudTeacherStart(){
         normalizeState();
         refreshAll();
         save();
-        toast(`☁️ ${list.length} öğrenci buluttan yüklendi`);
+        toast('☁️ '+list.length+' öğrenci buluttan yüklendi');
       }
     }catch(e){
       console.error('Buluttan okuma hatası:',e);
       cloudUI('err','Buluttan okunamadı: '+(e.code||e.message));
       toast('⚠️ Buluttan okunamadı: '+(e.code||'bağlantı hatası'));
-      return;                                          // seed/yerel veriyi buluta BASMA
+      return;
     }
     cloudPush(true).then(()=>cloudWatchInbox());
     cloudUI('ok','Bulut bağlı ✓');
-  });
-}
-
-        // Eğer bulutta öğrenciler varsa, yerel verileri buluttakilerle güncelleyelim
-        if(cloudStudents.length > 0) {
-          S.students = cloudStudents;
-          // Sınıfları da öğrencilere göre yeniden derleyelim
-          const classesSet = new Set(S.students.map(s => s.cls).filter(Boolean));
-          if(classesSet.size > 0) {
-            S.classes = Array.from(classesSet);
-            curClass = S.classes[0];
-          }
-          save(); // Yerel hafızayı da buluttan gelenlerle güncelleyelim
-          if(typeof renderChips === 'function') renderChips();
-          if(typeof buildSpace === 'function') buildSpace();
-          toast('☁️ Buluttaki veriler başarıyla yüklendi!');
-        }
-      } catch(e) {
-        console.error('Buluttan veri çekme hatası:', e);
-      }
-
-      cloudPush(true).then(()=>cloudWatchInbox());
-      cloudUI('ok','Bulut bağlı ✓');
-    }
-    else{
-      cloudUI('err','Buluta giriş yapılmadı — tıklayın');
-      if(cloud.unsub){try{cloud.unsub();}catch(e){}cloud.unsub=null;}
-    }
   });
 }
 function cloudLoginModal(){
