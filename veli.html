@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BOOKR SPACE PLATFORM</title>
+<title>BOOKR SPACE · Veli Uzay Kapısı</title>
+<meta name="robots" content="noindex,nofollow">
 <!-- Firebase (klasik/compat, senkron yükleme) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.1/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.1/firebase-auth-compat.min.js"></script>
@@ -643,6 +644,7 @@ function applyExternal(v){
   }catch(err){}
 }
 window.addEventListener('storage',e=>{
+  if(PMODE)return;
   if(e.key!==KEY||!e.newValue)return;
   if(modal.classList.contains('open')){pendingExt=e.newValue;return;}
   applyExternal(e.newValue);
@@ -1910,7 +1912,7 @@ const FIREBASE_CONFIG={
   appId: "1:285388381457:web:6f75434d1d6d8bc97b80b0"
 };
 const FB_VER='10.12.2';
-const PMODE=(()=>{try{const q=new URLSearchParams(location.search);return q.has('veli')||q.has('portal')||location.hash==='#veli';}catch(e){return false;}})();
+const PMODE=true; /* veli.html: öğretmen paneli bu sayfada hiç açılmaz */
 const cloud={on:!!(FIREBASE_CONFIG.apiKey&&FIREBASE_CONFIG.projectId),ready:false,user:null,sent:new Map(),known:null,timer:null,unsub:null,punsub:null,pending:false};
 const cKey=c=>String(c||'').trim().toUpperCase().replace(/[\/\s.#$\[\]]/g,'');
 function cloudUI(state,tip){
@@ -2114,7 +2116,7 @@ async function cloudPull(){
   return {list,wk,avs};
 }
 async function cloudTeacherStart(){
-  console.log('BOOKR build: 2026-10-04-g');
+  console.log('BOOKR veli build: 2026-10-04-g');
   if(!cloud.on){cloudUI('off','Bulut kapalı: Firebase bilgileri girilmemiş (yalnızca bu tarayıcıda çalışır)');return;}
   cloudUI('busy','Bulut hazırlanıyor…');
   if(!(await cloudInit())){cloudUI('err','Firebase yüklenemedi (internet / yapılandırma)');return;}
@@ -2220,6 +2222,5 @@ try{
 }catch(e){console.error(e);}
 })();
 </script>
-<div id="buildTag" style="position:fixed;left:6px;bottom:3px;z-index:99999;font:10px/1.2 monospace;color:#9fb4ff;opacity:.75;pointer-events:none;max-width:90vw;text-shadow:0 0 3px #000">build 2026-10-04-g · bulut: başlamadı</div>
 </body>
 </html>
