@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BOOKR SPACE PLATFORM</title>
+<!-- Firebase (klasik/compat, senkron yükleme) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.1/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.1/firebase-auth-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.1/firebase-firestore-compat.min.js"></script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2040%2040%22%20aria-hidden%3D%22true%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22lg1%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233b8cff%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%237b5cff%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%2240%22%20height%3D%2240%22%20rx%3D%2211%22%20fill%3D%22url%28%23lg1%29%22/%3E%3Cpath%20d%3D%22M8%2022.5c4-2.2%208-2.2%2012%200v9c-4-2.2-8-2.2-12%200z%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M32%2022.5c-4-2.2-8-2.2-12%200v9c4-2.2%208-2.2%2012%200z%22%20fill%3D%22%23e3ebff%22/%3E%3Cellipse%20cx%3D%2220%22%20cy%3D%2215%22%20rx%3D%2213%22%20ry%3D%224.6%22%20transform%3D%22rotate%28-18%2020%2015%29%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-opacity%3D%22.85%22%20stroke-width%3D%221.6%22/%3E%3Ccircle%20cx%3D%2229.3%22%20cy%3D%2210.4%22%20r%3D%222.3%22%20fill%3D%22%23ffd86b%22/%3E%3Cpath%20d%3D%22M20%206.5l1%202.3%202.3%201-2.3%201-1%202.3-1-2.3-2.3-1%202.3-1z%22%20fill%3D%22%23fff%22/%3E%3C/svg%3E">
 <style>
 :root{
@@ -1887,13 +1891,43 @@ function cloudUI(state,tip){
   b.title=tip||'';
   b.style.opacity=(state==='off')?.55:1;
 }
+function loadScriptOnce(src){return new Promise((res,rej)=>{const t=document.createElement('script');t.src=src;t.onload=res;t.onerror=()=>rej(new Error('script yüklenemedi: '+src));document.head.appendChild(t);});}
+const snapExists=sn=>typeof sn.exists==='function'?sn.exists():!!sn.exists;
+function fbAdapters(fb){
+  const FS={
+    getFirestore:()=>fb.firestore(),
+    collection:(db,name)=>db.collection(name),
+    doc:(db,col,id)=>db.collection(col).doc(id),
+    getDoc:r=>r.get(),getDocs:q=>q.get(),
+    setDoc:(r,d,o)=>o?r.set(d,o):r.set(d),
+    updateDoc:(r,d)=>r.update(d),deleteDoc:r=>r.delete(),
+    onSnapshot:(r,ok,err)=>r.onSnapshot(ok,err),
+    query:(c,...cons)=>cons.reduce((q,f)=>f(q),c),
+    where:(f,op,v)=>q=>q.where(f,op,v),
+    arrayUnion:(...a)=>fb.firestore.FieldValue.arrayUnion(...a),
+    arrayRemove:(...a)=>fb.firestore.FieldValue.arrayRemove(...a)
+  };
+  const AU={
+    getAuth:()=>fb.auth(),
+    onAuthStateChanged:(au,cb)=>au.onAuthStateChanged(cb),
+    signInWithEmailAndPassword:(au,e,p)=>au.signInWithEmailAndPassword(e,p),
+    signOut:au=>au.signOut()
+  };
+  return {FS,AU};
+}
 async function cloudInit(){
   if(!cloud.on)return false;
   if(cloud.ready)return true;
   try{
-    const B='https://www.gstatic.com/firebasejs/'+FB_VER+'/';
-    const [A,FS,AU]=await Promise.all([import(B+'firebase-app.js'),import(B+'firebase-firestore.js'),import(B+'firebase-auth.js')]);
-    const app=A.initializeApp(FIREBASE_CONFIG);
+    /* <head> içindeki cdnjs script'leri yüklenmediyse (engelli/çevrimdışı) resmi gstatic klasik dosyalarını dene */
+    if(!(window.firebase&&firebase.auth&&firebase.firestore)){
+      const B='https://www.gstatic.com/firebasejs/'+FB_VER+'/';
+      for(const n of ['app','auth','firestore']){await loadScriptOnce(B+'firebase-'+n+'-compat.js');}
+    }
+    const fb=window.firebase;
+    if(!fb)throw new Error('firebase global yok');
+    const app=fb.apps.length?fb.app():fb.initializeApp(FIREBASE_CONFIG);
+    const {FS,AU}=fbAdapters(fb);
     cloud.FS=FS;cloud.AU=AU;cloud.db=FS.getFirestore(app);cloud.auth=AU.getAuth(app);cloud.ready=true;return true;
   }catch(e){cloud.err=e;console.error('Firebase yüklenemedi',e);return false;}
 }
@@ -1942,7 +1976,7 @@ async function lookupParent(raw){
   if(!(PMODE&&cloud.on)){return S.students.find(x=>String(x.code).toUpperCase()===String(raw).toUpperCase())||null;}
   if(!(await cloudInit()))throw new Error('init');
   const snap=await cloud.FS.getDoc(pref(raw));
-  if(!snap.exists())return null;
+  if(!snapExists(snap))return null;
   const st=adoptParentDoc(snap.data());
   cloudParentWatch(raw);
   return st;
@@ -1950,7 +1984,7 @@ async function lookupParent(raw){
 function cloudParentWatch(code){
   cloudParentStop();
   cloud.punsub=cloud.FS.onSnapshot(pref(code),snap=>{
-    if(!snap.exists()){if(parentCode){parentCode=null;try{sessionStorage.removeItem('bookr_parent');}catch(e){}renderParent();}return;}
+    if(!snapExists(snap)){if(parentCode){parentCode=null;try{sessionStorage.removeItem('bookr_parent');}catch(e){}renderParent();}return;}
     adoptParentDoc(snap.data());
     const a=document.activeElement;
     if(!(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)&&a.value))renderParent();
@@ -2028,7 +2062,7 @@ async function cloudPull(){
   return {list,wk,avs};
 }
 async function cloudTeacherStart(){
-  console.log('BOOKR build: 2026-10-04-a');
+  console.log('BOOKR build: 2026-10-04-b (compat)');
   if(!cloud.on){cloudUI('off','Bulut kapalı: Firebase bilgileri girilmemiş (yalnızca bu tarayıcıda çalışır)');return;}
   cloudUI('busy','Bulut hazırlanıyor…');
   if(!(await cloudInit())){cloudUI('err','Firebase yüklenemedi (internet / yapılandırma)');return;}
