@@ -311,6 +311,8 @@ select[data-cls]{min-width:84px;max-width:none}select[data-lv]{min-width:175px;m
 .thread{display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto;padding:4px}
 .bub{max-width:82%;padding:8px 12px;border-radius:14px;font-size:14px;white-space:pre-wrap;word-break:break-word}
 .bub small{display:block;font-size:10px;opacity:.7;margin-top:3px}
+.bub .bdel{display:inline-block;margin:4px 0 0;padding:2px 8px;border:1px solid rgba(255,255,255,.35);border-radius:999px;background:rgba(0,0,0,.18);color:inherit;font-size:11px;cursor:pointer;opacity:.75}
+.bub .bdel:hover{opacity:1;background:rgba(255,80,80,.35);border-color:rgba(255,120,120,.8)}
 .bub.in{align-self:flex-start;background:rgba(255,255,255,.1);border-bottom-left-radius:4px}
 .bub.out{align-self:flex-end;background:linear-gradient(135deg,#2f7bff,#7b5cff);border-bottom-right-radius:4px}
 .bookline{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:12px;margin-top:6px;font-size:14px}
@@ -740,7 +742,7 @@ function headerH(){const h=$('#hdr').offsetHeight;document.documentElement.style
 
 function renderChips(){
   if(!S.classes.includes(curClass))curClass=S.classes[0]||'';
-  $('#classChips').innerHTML=S.classes.map(c=>`<button class="chip ${c===curClass?'active':''}" data-cls="${esc(c)}">${esc(c)}</button>`).join('');
+  $('#classChips').innerHTML=S.classes.map(c=>`<button class="chip ${c===curClass?'active':''}" data-cls="${esc(c)}">${esc(c)}${(typeof PMODE!=='undefined'&&PMODE)?'':clsBadge(c)}</button>`).join('');
   headerH();
 }
 $('#classChips').addEventListener('click',e=>{
@@ -1052,8 +1054,12 @@ function addMsg(s,from,text){
   save();
 }
 const unreadT=s=>s.msgs.filter(m=>m.from==='veli'&&!m.read).length;
+const waitingT=s=>{const l=s.msgs[s.msgs.length-1];return !!l&&l.from==='veli';};   /* son söz velide = yanıt bekliyor */
+const pendingT=s=>unreadT(s)>0||waitingT(s);
+const clsPend=c=>S.students.filter(s=>s.cls===c&&pendingT(s)).length;
+const clsBadge=c=>{const n=clsPend(c);return n?`<span class="nbadge" style="margin-left:6px;padding:1px 7px" title="${n} öğrencinin velisinden yanıt bekleyen mesaj var">💬${n}</span>`:'';};
 const unreadP=s=>s.msgs.filter(m=>m.from==='ogretmen'&&!m.read).length;
-const bubbles=(s,me)=>s.msgs.length?s.msgs.map(m=>`<div class="bub ${m.from===me?'out':'in'}"><div>${esc(m.text)}</div><small>${m.from==='veli'?'👨‍👩‍👧 '+esc(s.name)+' velisi':'Öğretmen'} · ${fmtDT(m.t)}</small></div>`).join(''):'<div class="sub" style="text-align:center">Henüz mesaj yok.</div>';
+const bubbles=(s,me)=>s.msgs.length?s.msgs.map(m=>`<div class="bub ${m.from===me?'out':'in'}"><div>${esc(m.text)}</div><small>${m.from==='veli'?'👨‍👩‍👧 '+esc(s.name)+' velisi':'Öğretmen'} · ${fmtDT(m.t)}</small>${m.from===me?`<button type="button" class="bdel" data-mdel="${esc(m.id)}" title="Bu mesajı geri al / sil">🗑️ Geri al / Sil</button>`:''}</div>`).join(''):'<div class="sub" style="text-align:center">Henüz mesaj yok.</div>';
 
 const VELI_FILE='veli.html'; /* veli sayfasının dosya adı (öğretmen dosyasıyla aynı klasörde/sitede durmalı) */
 function parentLink(code){return location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/,'')+VELI_FILE+'?veli='+encodeURIComponent(code);}
@@ -1090,8 +1096,8 @@ function renderTeacher(){
   const last=S.hall[0];
   const vmsgs=s=>s.msgs.filter(x=>x.from==='veli');
   const lastVT=s=>{const v=vmsgs(s);return v.length?v[v.length-1].t:0;};
-  const waiting=s=>{const l=s.msgs[s.msgs.length-1];return !!l&&l.from==='veli';}; /* son söz velide = yanıt bekliyor */
-  const inbox=S.students.filter(s=>unreadT(s)>0||waiting(s)).sort((a,b)=>lastVT(b)-lastVT(a));
+  const inbox=S.students.filter(s=>(tFilter==='all'||s.cls===tFilter)&&pendingT(s)).sort((a,b)=>lastVT(b)-lastVT(a));   /* seçili sınıfın mesajları */
+  const otherPend=tFilter==='all'?[]:S.classes.filter(c=>c!==tFilter&&clsPend(c)>0).map(c=>c+' ('+clsPend(c)+')');
   const inboxNew=inbox.reduce((a,s)=>a+unreadT(s),0);
   const nb=S.weekBooks.length;
   root.innerHTML=`
@@ -1110,9 +1116,9 @@ function renderTeacher(){
       ${last&&last.list.length?`<div class="sub" style="margin:12px 0 0">Geçen hafta (${last.week}. hafta): ${last.list.map((x,i)=>['🥇','🥈','🥉'][i]+' '+esc(x.name)).join(' · ')}</div>`:''}
     </div>
     <div class="panel" style="margin:0">
-      <h2>📬 Veli Mesajları ${inbox.length?`<span class="nbadge">${inboxNew?inboxNew+' yeni':inbox.length+' yanıt bekliyor'}</span>`:''}</h2>
-      <div class="sub">Velilerden gelen mesajlar — siz yanıtlayana kadar burada kalır</div>
-      ${inbox.length?inbox.slice(0,10).map(s=>{const vm=vmsgs(s),m=vm[vm.length-1],nu=unreadT(s);return `<div class="logi" style="align-items:flex-start"><div style="min-width:0;flex:1"><div>👨‍👩‍👧 <b>${esc(s.name)}</b> <span class="vtag">${esc(s.cls)}</span><span class="vtag">${esc(s.code)}</span>${nu?`<span class="nbadge">${nu>1?nu+' yeni mesaj':'YENİ'}</span>`:`<span class="vtag">↩️ yanıt bekliyor</span>`}</div><div class="vtxt">${esc(m.text)}</div><div class="sub" style="margin:0">${esc(s.name)} velisinden · ${fmtDT(m.t)}</div></div><button class="btn sm pri" data-thread="${s.id}">Yanıtla</button></div>`;}).join(''):'<div class="sub" style="margin:0">Yanıt bekleyen veli mesajı yok. Her öğrencinin satırındaki 💬 düğmesiyle veliye mesaj bırakabilirsiniz.</div>'}
+      <h2>📬 Veli Mesajları${tFilter==='all'?'':' · '+esc(tFilter)} ${inbox.length?`<span class="nbadge">${inboxNew?inboxNew+' yeni':inbox.length+' yanıt bekliyor'}</span>`:''}</h2>
+      <div class="sub">${tFilter==='all'?'Tüm sınıflar':esc(tFilter)+' sınıfı'} · siz yanıtlayana kadar burada kalır${otherPend.length?`<br>📌 Diğer sınıflarda yanıt bekleyen: <b>${esc(otherPend.join(', '))}</b>`:''}</div>
+      ${inbox.length?inbox.slice(0,10).map(s=>{const vm=vmsgs(s),m=vm[vm.length-1],nu=unreadT(s);return `<div class="logi" style="align-items:flex-start"><div style="min-width:0;flex:1"><div>👨‍👩‍👧 <b>${esc(s.name)}</b> <span class="vtag">${esc(s.cls)}</span><span class="vtag">${esc(s.code)}</span>${nu?`<span class="nbadge">${nu>1?nu+' yeni mesaj':'YENİ'}</span>`:`<span class="vtag">↩️ yanıt bekliyor</span>`}</div><div class="vtxt">${esc(m.text)}</div><div class="sub" style="margin:0">${esc(s.name)} velisinden · ${fmtDT(m.t)}</div></div><button class="btn sm pri" data-thread="${s.id}">Yanıtla</button></div>`;}).join(''):`<div class="sub" style="margin:0">${tFilter==='all'?'':esc(tFilter)+' sınıfında '}Yanıt bekleyen veli mesajı yok. Her öğrencinin satırındaki 💬 düğmesiyle veliye mesaj bırakabilirsiniz.</div>`}
     </div>
   </div>
 
@@ -1128,7 +1134,7 @@ function renderTeacher(){
       <button class="btn pri" id="addStu">+ Yeni Öğrenci Ekle</button></div>
     <div class="tabs">
       <button class="chip ${tFilter==='all'?'active':''}" data-tf="all">Tümü (${S.students.length})</button>
-      ${S.classes.map(c=>{const n=S.students.filter(s=>s.cls===c).length;return `<span style="display:inline-flex;align-items:center;gap:4px"><button class="chip ${tFilter===c?'active':''}" data-tf="${esc(c)}">${esc(c)} (${n})</button>${n===0?`<button class="btn sm danger" data-rmcls="${esc(c)}" title="Boş sınıfı sil">✕</button>`:''}</span>`;}).join('')}
+      ${S.classes.map(c=>{const n=S.students.filter(s=>s.cls===c).length;return `<span style="display:inline-flex;align-items:center;gap:4px"><button class="chip ${tFilter===c?'active':''}" data-tf="${esc(c)}">${esc(c)} (${n})${clsBadge(c)}</button>${n===0?`<button class="btn sm danger" data-rmcls="${esc(c)}" title="Boş sınıfı sil">✕</button>`:''}</span>`;}).join('')}
       <span class="spacer"></span>
       <div class="addclass"><input id="newCls" placeholder="Yeni sınıf (örn. 1-C)" maxlength="12"><button class="btn" id="addCls">+ Sınıf Ekle</button></div>
     </div>
@@ -1498,6 +1504,13 @@ function threadModal(s){
   modalCb=()=>renderTeacher();
   const thr=$('#thr');thr.scrollTop=thr.scrollHeight;
   $('#thNo').onclick=closeModal;
+  $$('[data-mdel]',thr).forEach(b=>b.onclick=()=>{
+    if(!confirm('Bu mesaj silinsin mi? Veli tarafında da kaybolur.'))return;
+    const id=b.dataset.mdel,n0=s.msgs.length;
+    s.msgs=s.msgs.filter(m=>!(m.id===id&&m.from==='ogretmen'));
+    if(s.msgs.length!==n0){save();toast('Mesaj silindi ✓');}
+    threadModal(s);
+  });
   $('#thGo').onclick=()=>{
     const t=$('#thTxt').value.trim();if(!t){toast('Mesaj yazın');return;}
     addMsg(s,'ogretmen',t);threadModal(s);toast('Mesaj veliye gönderildi ✓');
@@ -1778,6 +1791,12 @@ function renderParent(){
     const t=$('#pmTxt').value.trim();if(!t){toast('Mesaj yazın');return;}
     parentAct({type:'msg',text:t.slice(0,500)},s);toast('Mesajınız öğretmene gönderildi ✓');renderParent();
   };
+  $$('[data-mdel]',root).forEach(b=>b.onclick=()=>{
+    if(!confirm('Bu mesaj silinsin mi? Öğretmen tarafında da kaybolur.'))return;
+    const st=S.students.find(x=>x.code===parentCode)||s;
+    parentAct({type:'delmsg',mid:b.dataset.mdel},st);
+    toast('Mesaj silindi ✓');renderParent();
+  });
   const cb=$('#pClaim');
   if(cb)cb.onclick=()=>{
     const st=S.students.find(x=>x.code===parentCode);
@@ -1920,7 +1939,7 @@ function cloudUI(state,tip){
   b.classList.toggle('on',state==='ok');b.classList.toggle('err',state==='err');b.classList.toggle('busy',state==='busy');
   b.textContent=state==='ok'?'☁️':state==='off'?'☁️':'☁️';
   b.title=tip||'';
-  const bt=$('#buildTag');if(bt)bt.textContent='build 2026-10-04-g · bulut: '+state+(tip?' — '+tip:'');
+  const bt=$('#buildTag');if(bt)bt.textContent='build 2026-10-04-h · bulut: '+state+(tip?' — '+tip:'');
   b.style.opacity=(state==='off')?.55:1;
 }
 function loadScriptOnce(src){return new Promise((res,rej)=>{const t=document.createElement('script');t.src=src;t.onload=res;t.onerror=()=>rej(new Error('script yüklenemedi: '+src));document.head.appendChild(t);});}
@@ -1979,6 +1998,8 @@ function applyOp(st,op){
     if(t){st.msgs.push({id:'m'+op.id,from:'veli',text:t,t:op.t||Date.now(),read:false});if(st.msgs.length>100)st.msgs.shift();ch=true;}
   }else if(op.type==='read'){
     st.msgs.forEach(m=>{if(m.from==='ogretmen'&&!m.read){m.read=true;ch=true;}});
+  }else if(op.type==='delmsg'){
+    const n0=st.msgs.length;st.msgs=st.msgs.filter(m=>m.id!==op.mid);if(st.msgs.length!==n0)ch=true;
   }
   st.opsDone.push(op.id);if(st.opsDone.length>60)st.opsDone.shift();
   return ch;
@@ -2116,7 +2137,7 @@ async function cloudPull(){
   return {list,wk,avs};
 }
 async function cloudTeacherStart(){
-  console.log('BOOKR veli build: 2026-10-04-g');
+  console.log('BOOKR veli build: 2026-10-04-h');
   if(!cloud.on){cloudUI('off','Bulut kapalı: Firebase bilgileri girilmemiş (yalnızca bu tarayıcıda çalışır)');return;}
   cloudUI('busy','Bulut hazırlanıyor…');
   if(!(await cloudInit())){cloudUI('err','Firebase yüklenemedi (internet / yapılandırma)');return;}
