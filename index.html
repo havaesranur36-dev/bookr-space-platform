@@ -2015,27 +2015,57 @@ function cloudWatchInbox(){
     });
   },e=>console.error('inbox',e));
 }
+async function cloudPull(){
+  const snap=await cloud.FS.getDocs(cloud.FS.collection(cloud.db,'parents'));
+  const list=[],avs=new Map();let wk=null;
+  snap.forEach(doc=>{
+    const d=doc.data();if(!d||!d.student)return;
+    list.push(d.student);
+    if(d.week&&(!wk||(d.week.no||0)>=(wk.no||0)))wk=d.week;
+    const a=d.student.avatar;
+    if(d.av&&a&&String(a)[0]!=='d')avs.set(a,d.av);
+  });
+  return {list,wk,avs};
+}
 async function cloudTeacherStart(){
-  if(!cloud.on){cloudUI('off','Bulut kapalı: Firebase bilgileri girilmemiş (yalnızca bu tarayıcıda çalışır)');return;}
+  console.log('BOOKR build: 2026-10-04-a');           // canlıda sürüm doğrulaması
+  if(!cloud.on){cloudUI('off','Bulut kapalı');return;}
   cloudUI('busy','Bulut hazırlanıyor…');
-  if(!(await cloudInit())){cloudUI('err','Firebase yüklenemedi (internet / yapılandırma)');return;}
-  
+  if(!(await cloudInit())){cloudUI('err','Firebase yüklenemedi');return;}
   cloud.AU.onAuthStateChanged(cloud.auth, async u=>{
     cloud.user=u&&!u.isAnonymous?u:null;
-    if(cloud.user){
-      cloudUI('busy','Buluttan veriler alınıyor…');
-      cloud.known=null;
-      
-      try {
-        // Buluttaki kayıtlı tüm öğrencileri çekelim ki diğer cihazlardaki veriler gelsin
-        const snap = await cloud.FS.getDocs(cloud.FS.collection(cloud.db,'parents'));
-        const cloudStudents = [];
-        snap.forEach(doc => {
-          const data = doc.data();
-          if(data && data.student) {
-            cloudStudents.push(data.student);
-          }
-        });
+    if(!cloud.user){
+      cloudUI('err','Buluta giriş yapılmadı — tıklayın');
+      if(cloud.unsub){try{cloud.unsub();}catch(e){}cloud.unsub=null;}
+      return;
+    }
+    cloudUI('busy','Buluttan veriler alınıyor…');
+    cloud.known=null;
+    try{
+      const {list,wk,avs}=await cloudPull();
+      console.log('Buluttan gelen öğrenci sayısı:',list.length);
+      if(list.length){
+        await saveSnapshot();                          // ezmeden önce yerel yedek
+        S.students=list;
+        if(wk){S.weekNo=wk.no||S.weekNo;S.weekStart=wk.start||S.weekStart;S.weekBooks=wk.books||[];}
+        avs.forEach((src,id)=>{if(!S.avatars.some(a=>a.id===id))S.avatars.push({id,src});});
+        S.classes=[...new Set(list.map(s=>s.cls).filter(Boolean))].sort();
+        curClass=S.classes[0]||'';
+        normalizeState();
+        refreshAll();
+        save();
+        toast(`☁️ ${list.length} öğrenci buluttan yüklendi`);
+      }
+    }catch(e){
+      console.error('Buluttan okuma hatası:',e);
+      cloudUI('err','Buluttan okunamadı: '+(e.code||e.message));
+      toast('⚠️ Buluttan okunamadı: '+(e.code||'bağlantı hatası'));
+      return;                                          // seed/yerel veriyi buluta BASMA
+    }
+    cloudPush(true).then(()=>cloudWatchInbox());
+    cloudUI('ok','Bulut bağlı ✓');
+  });
+}
 
         // Eğer bulutta öğrenciler varsa, yerel verileri buluttakilerle güncelleyelim
         if(cloudStudents.length > 0) {
